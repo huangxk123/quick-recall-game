@@ -321,13 +321,10 @@
                 return;
             }
 
-            // FIX: 简化查询以避免复合索引错误。只按 level 降序排列。
-            // 必须移除 limit(10)，因为我们需要获取所有数据以便在客户端排序和筛选。
+            // FIX: 进一步简化查询，移除所有 orderBy，确保读操作成功。
+            // 客户端的 sortAndLimitLeaderboard 函数将处理所有排序和限制。
             const q = query(
-                collection(db, HIGH_SCORES_COLLECTION),
-                orderBy("level", "desc") // 只保留一个 orderBy
-                // orderBy("timestamp", "asc"), // 移除，避免索引错误
-                // limit(10) // 移除，在客户端进行限制
+                collection(db, HIGH_SCORES_COLLECTION)
             );
 
             // 实时监听
@@ -339,7 +336,7 @@
                     rawScores.push({ ...data, level: Number(data.level) });
                 });
                 
-                // FIX: 在客户端进行排序和限制
+                // 在客户端进行排序和限制
                 const sortedAndLimitedScores = sortAndLimitLeaderboard(rawScores);
 
                 let html = '';
