@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>速记大师 - Quick Recall</title>
+    <!-- 引入 Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 设置 Inter 字体作为首选 */
+        :root {
+            font-family: 'Inter', sans-serif;
+        }
+        /* 隐藏滚动条但允许内容滚动 */
+        body {
+            overflow-y: scroll;
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+        body::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+        }
+        /* 关键帧动画：闪烁效果 */
+        @keyframes flash {
+            0%, 100% { background-color: #6366f1; } /* Indigo 500 */
+            50% { background-color: #a5b4fc; } /* Indigo 300 */
+        }
+        .flash-animation {
+            animation: flash 0.5s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-start justify-center p-4 sm:p-8">
+
+    <div id="game-container" class="w-full max-w-xl bg-white shadow-2xl rounded-xl p-6 sm:p-8 border-t-8 border-indigo-600 transform transition-all duration-300 mb-6">
+        
+        <!-- 游戏标题和状态 -->
+        <header class="text-center mb-6">
+            <h1 class="text-4xl font-extrabold text-indigo-800 mb-2">速记大师 🧠</h1>
+            <p class="text-gray-600 text-sm">记住顺序，然后快速点击！</p>
+        </header>
+
+        <!-- 游戏信息面板 -->
+        <div class="flex justify-between items-center mb-6 text-gray-700 font-semibold text-lg">
+            <div class="flex items-center space-x-2">
+                <span class="text-indigo-600">🏆 等级:</span>
+                <span id="level-display" class="text-xl text-indigo-800">1</span>
+            </div>
+            <div class="flex items-center space-x-2">
+                <span class="text-indigo-600">🕰️ 计时:</span>
+                <span id="timer-display" class="text-xl text-indigo-800">0s</span>
+            </div>
+        </div>
+
+        <!-- 游戏主区域：序列显示和提示信息 -->
+        <div id="main-area" class="min-h-[150px] flex flex-col items-center justify-center p-4 bg-indigo-50 rounded-lg border-2 border-dashed border-indigo-300 mb-6 transition-all duration-300">
+            <div id="sequence-display" class="flex flex-wrap justify-center gap-3 text-6xl font-bold transition-opacity duration-500 opacity-0">
+                <!-- 记忆序列显示在这里 -->
+            </div>
+            <p id="message-text" class="text-center text-xl font-medium text-gray-800 transition-opacity duration-300">点击“开始游戏”挑战你的记忆力！</p>
+            <p id="instructions" class="text-center text-sm text-gray-500 mt-2 hidden">点击下方的图标，按照你刚才看到的顺序输入。</p>
+        </div>
+
+        <!-- 输入按钮区域 -->
+        <div id="input-buttons" class="grid grid-cols-4 gap-3 mb-6">
+            <!-- 动态生成的输入按钮在这里 -->
+        </div>
+
+        <!-- 控制按钮区域 -->
+        <div class="flex flex-col space-y-3">
+            <button id="start-button" class="w-full py-3 px-4 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50">
+                开始游戏
+            </button>
+            <button id="status-message" class="w-full py-3 px-4 bg-gray-300 text-gray-700 font-bold rounded-lg cursor-default hidden">
+                记忆中...
+            </button>
+        </div>
+        
+        <!-- 当前用户 ID 显示 -->
+        <p class="text-xs text-gray-400 text-right mt-3">
+            你的用户ID (用于分享): 
+            <span id="user-id-display" class="font-mono text-gray-600">加载中...</span>
+        </p>
+
+        <!-- 游戏结束/高分记录区域 -->
+        <div id="game-over-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white p-8 rounded-xl shadow-2xl max-w-sm w-full text-center transform transition-all duration-300 scale-95 opacity-0" id="modal-content">
+                <h3 class="text-3xl font-extrabold text-red-600 mb-3">游戏结束 ❌</h3>
+                <p class="text-lg text-gray-700 mb-4">你的最终等级是: <span id="final-level" class="text-indigo-600 font-bold text-2xl">1</span></p>
+                <div id="high-score-message" class="text-sm font-medium text-green-600 bg-green-50 p-2 rounded hidden mb-4">
+                    🎉 新纪录已保存到排行榜!
+                </div>
+                <button id="restart-button" class="w-full py-3 px-4 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition duration-150">
+                    再玩一次
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 全球排行榜区域 -->
+    <div id="leaderboard-container" class="w-full max-w-xl bg-white shadow-xl rounded-xl p-6 sm:p-8 border-b-8 border-indigo-600">
+        <h2 class="text-2xl font-bold text-indigo-700 mb-4 text-center">🏆 全球排行榜 (Top 10)</h2>
+        <div class="space-y-2" id="leaderboard-list">
+            <p class="text-center text-gray-500">正在加载排行榜...</p>
+        </div>
+    </div>
+
+
+    <script type="module">
+        // Firebase 模块导入
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, onSnapshot, collection, query, limit, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase variables and app ID
+        let app;
+        let db;
+        let auth;
+        let userId = 'loading...';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // 解析全局配置
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+        // Firestore 集合路径
+        const HIGH_SCORES_COLLECTION = `/artifacts/${appId}/public/data/highScores`;
+
+
+        // Game Constants
+        const EMOJIS = ['🚀', '🌟', '💡', '🧩', '🍎', '⚽', '⏰', '🎤', '🌈', '🌙', '🔥', '💧'];
+        const MAX_SEQUENCE_LENGTH = EMOJIS.length;
+        const INITIAL_SEQUENCE_LENGTH = 3;
+        const INITIAL_DISPLAY_TIME = 2000; // 2 seconds
+        const RECALL_TIME_LIMIT = 5000; // 5 seconds to answer
+
+        // DOM Elements
+        const $startButton = document.getElementById('start-button');
+        const $statusMessage = document.getElementById('status-message');
+        const $sequenceDisplay = document.getElementById('sequence-display');
+        const $messageText = document.getElementById('message-text');
+        const $instructions = document.getElementById('instructions');
+        const $inputButtons = document.getElementById('input-buttons');
+        const $levelDisplay = document.getElementById('level-display');
+        const $timerDisplay = document.getElementById('timer-display');
+        const $gameOverModal = document.getElementById('game-over-modal');
+        const $modalContent = document.getElementById('modal-content');
+        const $restartButton = document.getElementById('restart-button');
+        const $finalLevel = document.getElementById('final-level');
+        const $highScoreMessage = document.getElementById('high-score-message');
+        const $userIdDisplay = document.getElementById('user-id-display');
+        const $leaderboardList = document.getElementById('leaderboard-list');
+
+
+        // Game State
+        let gameState = {
+            level: 1,
+            score: 0,
+            sequenceLength: INITIAL_SEQUENCE_LENGTH,
+            displayTime: INITIAL_DISPLAY_TIME,
+            sequence: [],
+            playerInput: [],
+            recallTimer: null,
+            timerInterval: null,
+            timeRemaining: RECALL_TIME_LIMIT / 1000,
+            isGameRunning: false,
+        };
+
+        // --- Utility Functions ---
+
+        /**
+         * Generates a unique random sequence of elements.
+         * @param {number} length The length of the sequence.
+         * @returns {string[]} The generated sequence.
+         */
+        function generateSequence(length) {
+            // 随机选取用于本轮的 N 个唯一元素
+            const uniqueEmojis = [...EMOJIS].sort(() => 0.5 - Math.random()).slice(0, Math.min(length, MAX_SEQUENCE_LENGTH));
+            
+            // 从这 N 个元素中，随机生成长度为 L 的序列 (允许重复)
+            const sequence = [];
+            for (let i = 0; i < length; i++) {
+                const randomIndex = Math.floor(Math.random() * uniqueEmojis.length);
+                sequence.push(uniqueEmojis[randomIndex]);
+            }
+            return sequence;
+        }
+
+        /**
+         * Renders the input buttons based on the unique elements in the current sequence.
+         */
+        function renderInputButtons(sequence) {
+            $inputButtons.innerHTML = '';
+            // 获取序列中所有唯一的元素，并随机打乱它们的顺序
+            const uniqueEmojis = Array.from(new Set(sequence)).sort(() => 0.5 - Math.random());
+            
+            $inputButtons.style.gridTemplateColumns = `repeat(${uniqueEmojis.length}, minmax(0, 1fr))`;
+
+            uniqueEmojis.forEach(emoji => {
+                const button = document.createElement('button');
+                button.textContent = emoji;
+                button.className = 'py-3 text-4xl bg-gray-200 rounded-lg shadow-md transition duration-150 transform hover:scale-[1.05] hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed';
+                button.setAttribute('data-value', emoji);
+                button.onclick = handleInput;
+                button.disabled = true; // 默认禁用
+                $inputButtons.appendChild(button);
+            });
+        }
+
+        /**
+         * Updates the UI elements to reflect the current game state.
+         */
+        function updateUI() {
+            $levelDisplay.textContent = gameState.level;
+            $timerDisplay.textContent = `${gameState.timeRemaining.toFixed(1)}s`;
+            $userIdDisplay.textContent = userId;
+        }
+
+        /**
+         * Enables or disables all input buttons.
+         * @param {boolean} enable True to enable, false to disable.
+         */
+        function toggleInputButtons(enable) {
+            const buttons = $inputButtons.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.disabled = !enable;
+                if (enable) {
+                    button.classList.remove('bg-gray-300');
+                    button.classList.add('bg-indigo-200', 'hover:bg-indigo-300');
+                } else {
+                    button.classList.add('bg-gray-300');
+                    button.classList.remove('bg-indigo-200', 'hover:bg-indigo-300');
+                }
+            });
+        }
+
+        // --- Firebase Functions ---
+
+        /**
+         * 初始化 Firebase 应用和认证。
+         */
+        async function firebaseSetup() {
+            try {
+                // 初始化 Firebase
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // 使用自定义令牌或匿名登录
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // 监听认证状态变化
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        updateUI();
+                        // 认证成功后加载排行榜
+                        loadLeaderboard();
+                    } else {
+                        // 如果无法获取用户，使用默认 ID
+                        userId = 'guest-' + crypto.randomUUID().substring(0, 8);
+                        updateUI();
+                        $leaderboardList.innerHTML = '<p class="text-center text-red-500">无法连接到排行榜服务。</p>';
+                    }
+                });
+            } catch (error) {
+                console.error("Firebase 初始化或认证失败:", error);
+                $userIdDisplay.textContent = '错误!';
+                $leaderboardList.innerHTML = '<p class="text-center text-red-500">排行榜加载失败，请检查控制台错误。</p>';
+            }
+        }
+
+        /**
+         * 从 Firestore 加载并实时监听全球排行榜。
+         */
+        function loadLeaderboard() {
+            // 查询：按 level 降序排列，取前 10 条
+            const q = query(
+                collection(db, HIGH_SCORES_COLLECTION),
+                orderBy("level", "desc"),
+                orderBy("timestamp", "asc"), // 次级排序：分数相同时，先达成的靠前
+                limit(10)
+            );
+
+            // 实时监听
+            onSnapshot(q, (snapshot) => {
+                let html = '';
+                if (snapshot.empty) {
+                    html = '<p class="text-center text-gray-500">暂无记录，快来创造第一个高分！</p>';
+                } else {
+                    snapshot.forEach((doc, index) => {
+                        const scoreData = doc.data();
+                        const rank = index + 1;
+                        const isCurrentUser = scoreData.userId === userId;
+                        const bgColor = isCurrentUser ? 'bg-indigo-100 font-bold' : 'bg-gray-50';
+                        const time = scoreData.timestamp ? new Date(scoreData.timestamp.toDate()).toLocaleDateString() : 'N/A';
+                        
+                        // 限制用户ID长度，防止UI溢出
+                        const displayUserId = scoreData.userId.substring(0, 10) + '...';
+
+                        html += `
+                            <div class="flex justify-between items-center p-3 rounded-lg shadow-sm ${bgColor} transition duration-150 border-l-4 border-indigo-400">
+                                <div class="flex items-center space-x-3">
+                                    <span class="text-xl w-6 text-center text-indigo-700">${rank}.</span>
+                                    <span class="text-gray-900">${scoreData.level} 级</span>
+                                    ${isCurrentUser ? '<span class="text-xs text-indigo-600 bg-indigo-200 px-1 rounded">我</span>' : ''}
+                                </div>
+                                <div class="text-sm text-right">
+                                    <p class="text-gray-600 font-mono">${displayUserId}</p>
+                                    <p class="text-gray-400 text-xs">${time}</p>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                $leaderboardList.innerHTML = html;
+            }, (error) => {
+                console.error("加载排行榜失败:", error);
+                $leaderboardList.innerHTML = '<p class="text-center text-red-500">加载排行榜时发生错误。</p>';
+            });
+        }
+        
+        /**
+         * 将新的高分保存到 Firestore。
+         * @param {number} level 达到的等级。
+         */
+        async function saveHighScore(level) {
+            if (!db || !userId) {
+                console.error("数据库未初始化或用户ID缺失，无法保存高分。");
+                return;
+            }
+            
+            // 创建分数对象
+            const scoreData = {
+                userId: userId,
+                level: level,
+                timestamp: serverTimestamp() // 使用 Firestore 服务器时间戳
+            };
+
+            try {
+                // 将分数添加到公共高分集合
+                await addDoc(collection(db, HIGH_SCORES_COLLECTION), scoreData);
+                console.log(`高分 (Level ${level}) 已成功保存到 Firestore.`);
+            } catch (error) {
+                console.error("保存高分到 Firestore 失败:", error);
+                $highScoreMessage.textContent = '保存高分失败！';
+                $highScoreMessage.classList.remove('hidden', 'text-green-600');
+                $highScoreMessage.classList.add('text-red-600');
+            }
+        }
+
+
+        // --- Game Flow Functions ---
+
+        /**
+         * Starts a new game or a new round.
+         */
+        function startGame() {
+            if (gameState.isGameRunning) return;
+            gameState.isGameRunning = true;
+
+            // 隐藏开始按钮，显示状态信息
+            $startButton.classList.add('hidden');
+            $statusMessage.classList.remove('hidden');
+            $statusMessage.textContent = '生成序列...';
+            $messageText.textContent = '准备...';
+            $instructions.classList.add('hidden');
+
+            // 初始化本轮状态
+            gameState.playerInput = [];
+            gameState.sequence = generateSequence(gameState.sequenceLength);
+            
+            // 渲染输入按钮 (但暂不启用)
+            renderInputButtons(gameState.sequence);
+            toggleInputButtons(false);
+            
+            // 开始记忆阶段
+            setTimeout(memorizePhase, 1000); // 1秒准备时间
+        }
+
+        /**
+         * Phase 1: Display the sequence for memorization.
+         */
+        function memorizePhase() {
+            $statusMessage.textContent = '记忆中...';
+            $messageText.textContent = `记住这个 ${gameState.sequence.length} 个元素的序列！`;
+
+            // 显示序列
+            $sequenceDisplay.innerHTML = gameState.sequence.map(emoji => 
+                `<span class="p-2 sm:p-3 bg-indigo-200 rounded-lg shadow-inner">${emoji}</span>`
+            ).join('');
+            
+            // 渐入显示
+            $sequenceDisplay.classList.remove('opacity-0');
+            $sequenceDisplay.classList.add('opacity-100');
+
+            // 记忆时间结束后，开始召回阶段
+            setTimeout(() => {
+                $sequenceDisplay.classList.remove('opacity-100');
+                $sequenceDisplay.classList.add('opacity-0');
+
+                // 序列淡出后，开始召回阶段
+                setTimeout(recallPhase, 500); // 500ms 等待序列完全淡出
+            }, gameState.displayTime);
+        }
+
+        /**
+         * Phase 2: User inputs the remembered sequence.
+         */
+        function recallPhase() {
+            $statusMessage.textContent = '你的回合！';
+            $statusMessage.classList.add('flash-animation');
+            $messageText.textContent = '请按照顺序点击图标。';
+            $instructions.classList.remove('hidden');
+
+            toggleInputButtons(true);
+
+            // 启动召回计时器
+            gameState.timeRemaining = RECALL_TIME_LIMIT / 1000;
+            updateUI();
+
+            gameState.timerInterval = setInterval(() => {
+                gameState.timeRemaining -= 0.1;
+                if (gameState.timeRemaining <= 0) {
+                    clearInterval(gameState.timerInterval);
+                    handleValidation(false, "超时了！");
+                }
+                // 确保时间不为负
+                gameState.timeRemaining = Math.max(0, gameState.timeRemaining);
+                updateUI();
+            }, 100);
+        }
+
+        /**
+         * Handles user input from the button clicks.
+         * @param {Event} event The click event.
+         */
+        function handleInput(event) {
+            if (gameState.playerInput.length >= gameState.sequence.length) return;
+
+            const input = event.target.getAttribute('data-value');
+            gameState.playerInput.push(input);
+
+            // 视觉反馈：标记已点击的按钮
+            event.target.classList.remove('bg-indigo-200', 'hover:bg-indigo-300');
+            event.target.classList.add('bg-indigo-600', 'text-white');
+
+            // 检查是否输入完成
+            if (gameState.playerInput.length === gameState.sequence.length) {
+                // 停止计时器
+                clearInterval(gameState.timerInterval);
+                
+                const isCorrect = gameState.playerInput.join('') === gameState.sequence.join('');
+                handleValidation(isCorrect);
+            }
+        }
+
+        /**
+         * Validates the result and proceeds to the next level or game over.
+         * @param {boolean} isCorrect True if the sequence is correct.
+         * @param {string} reason Optional reason for failure (e.g., "Timeout").
+         */
+        function handleValidation(isCorrect, reason = "顺序错误!") {
+            gameState.isGameRunning = false;
+            $statusMessage.classList.remove('flash-animation');
+            toggleInputButtons(false);
+
+            if (isCorrect) {
+                $messageText.textContent = '✅ 恭喜！顺序完全正确！';
+                $messageText.classList.add('text-green-600');
+                
+                // 延迟进入下一轮
+                setTimeout(levelUp, 1500);
+            } else {
+                $messageText.textContent = `❌ ${reason} 正确序列是: ${gameState.sequence.join(', ')}`;
+                $messageText.classList.add('text-red-600');
+                
+                // 游戏结束
+                setTimeout(gameOver, 2000);
+            }
+        }
+
+        /**
+         * Moves the game to the next level, increasing difficulty.
+         */
+        function levelUp() {
+            $messageText.classList.remove('text-green-600', 'text-red-600');
+
+            gameState.level++;
+            // 增加序列长度，但不能超过最大限制
+            gameState.sequenceLength = Math.min(MAX_SEQUENCE_LENGTH, gameState.sequenceLength + 1);
+            
+            // 稍微减少显示时间，增加挑战性 (最小1秒)
+            gameState.displayTime = Math.max(1000, gameState.displayTime - 100);
+
+            // 重置UI和状态，开始下一轮
+            $statusMessage.classList.add('hidden');
+            $startButton.classList.remove('hidden');
+            $startButton.textContent = `进入等级 ${gameState.level} (序列长度: ${gameState.sequenceLength})`;
+            $messageText.textContent = '准备好了吗？点击开始！';
+            updateUI();
+        }
+
+        /**
+         * Handles the end of the game, showing the final score/level.
+         */
+        async function gameOver() {
+            $messageText.classList.remove('text-green-600', 'text-red-600');
+
+            const finalLevel = gameState.level;
+            $finalLevel.textContent = finalLevel;
+
+            // 游戏结束后，保存分数到 Firestore
+            // 注意：我们只保存达到新等级的记录，而不是检查是否是"个人最高分"
+            // 排行榜将根据所有保存的记录自动排序
+            if (finalLevel > 1) {
+                $highScoreMessage.classList.remove('hidden');
+                await saveHighScore(finalLevel);
+            } else {
+                 $highScoreMessage.classList.add('hidden');
+            }
+            
+            // 显示游戏结束模态框
+            $gameOverModal.classList.remove('hidden');
+            $gameOverModal.classList.add('flex');
+            setTimeout(() => {
+                $modalContent.classList.remove('scale-95', 'opacity-0');
+                $modalContent.classList.add('scale-100', 'opacity-100');
+            }, 50);
+
+            // 重置游戏状态以便重新开始
+            gameState.level = 1;
+            gameState.sequenceLength = INITIAL_SEQUENCE_LENGTH;
+            gameState.displayTime = INITIAL_DISPLAY_TIME;
+            updateUI();
+            
+            $statusMessage.classList.add('hidden');
+            $startButton.classList.remove('hidden');
+            $startButton.textContent = '重新开始游戏';
+            $messageText.textContent = '点击“重新开始游戏”再次挑战！';
+            $instructions.classList.add('hidden');
+        }
+        
+        /**
+         * Closes the game over modal and resets the game to the initial state.
+         */
+        function resetGame() {
+            $modalContent.classList.remove('scale-100', 'opacity-100');
+            $modalContent.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                $gameOverModal.classList.add('hidden');
+                $gameOverModal.classList.remove('flex');
+            }, 300);
+            
+            // 确保UI回到初始状态
+            $levelDisplay.textContent = '1';
+            $timerDisplay.textContent = '0s';
+            $sequenceDisplay.innerHTML = '';
+            $messageText.textContent = '点击“开始游戏”挑战你的记忆力！';
+            $inputButtons.innerHTML = '';
+            $startButton.textContent = '开始游戏';
+            $startButton.disabled = false;
+        }
+
+
+        // --- Event Listeners and Initialization ---
+
+        $startButton.addEventListener('click', startGame);
+        $restartButton.addEventListener('click', resetGame);
+        
+        // 确保 DOM 加载完毕后再执行初始化
+        window.onload = function() {
+            // Initial setup
+            updateUI();
+            // 初始化时，生成一次输入按钮（使用所有元素作为潜在选项）
+            renderInputButtons(EMOJIS); 
+            toggleInputButtons(false);
+            
+            // 初始化 Firebase 和认证
+            firebaseSetup();
+        }
+
+        // --- Firebase Debugging ---
+        // import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // setLogLevel('debug'); // 取消注释以查看控制台中的调试日志
+
+
+    </script>
+</body>
+</html>
