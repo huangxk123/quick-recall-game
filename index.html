@@ -67,7 +67,7 @@
         </div>
 
         <!-- 控制按钮区域 -->
-        <div class="flex flex-col space-y-3">
+        <div class="flex flexcol space-y-3">
             <button id="start-button" class="w-full py-3 px-4 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50">
                 开始游戏
             </button>
@@ -123,6 +123,9 @@
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
 
         // Firestore 集合路径
+        // 这是排行榜数据存储的公共路径。
+        // 如需修改，请更改最后的 'highScores' 为您想要的新名称（例如 'gameLeaderboard'）。
+        // 路径格式必须是：/artifacts/{appId}/public/data/{您的集合名称}
         const HIGH_SCORES_COLLECTION = `/artifacts/${appId}/public/data/highScores`;
 
 
@@ -232,6 +235,33 @@
                 }
             });
         }
+        
+        /**
+         * Fix: 修复 Firestore 复合索引错误，实现客户端排行榜排序。
+         * 在客户端对排行榜数据进行排序和限制。
+         * @param {Array<Object>} scores 原始分数数据列表。
+         * @returns {Array<Object>} 排序后的前 10 条记录。
+         */
+        function sortAndLimitLeaderboard(scores) {
+            // 排序逻辑：
+            // 1. Level 降序 (等级越高越好)
+            // 2. Timestamp 升序 (等级相同时，时间越早越好)
+            scores.sort((a, b) => {
+                // 1. Level is the primary sort (Descending)
+                if (a.level !== b.level) {
+                    return b.level - a.level;
+                }
+                // 2. Timestamp is the secondary sort (Ascending: Earlier time is better)
+                // 必须检查 timestamp 是否存在，以防尚未写入（虽然不太可能在 onSnapshot 中发生）
+                const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
+                const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
+                return timeA - timeB;
+            });
+
+            // 限制为前 10 条
+            return scores.slice(0, 10);
+        }
+
 
         // --- Firebase Functions ---
 
@@ -240,32 +270,40 @@
          */
         async function firebaseSetup() {
             try {
-                // 初始化 Firebase
+                // 1. 初始化 Firebase 核心服务
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // 使用自定义令牌或匿名登录
-                if (typeof __initial_auth_token !== 'undefined') {
+                // 2. 尝试使用自定义令牌或匿名登录
+                let userAuthenticated = false;
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
+                    userAuthenticated = true;
                 } else {
                     await signInAnonymously(auth);
+                    userAuthenticated = true;
                 }
-
-                // 监听认证状态变化
+                
+                // 3. 监听认证状态变化（确保 userId 是最新的）
                 onAuthStateChanged(auth, (user) => {
-                    if (user) {
+                    if (user && db) {
                         userId = user.uid;
                         updateUI();
-                        // 认证成功后加载排行榜
+                        // 认证成功且 db 准备就绪后，加载排行榜
                         loadLeaderboard();
-                    } else {
-                        // 如果无法获取用户，使用默认 ID
+                    } else if (db) {
+                        // 如果无法获取用户，使用默认 ID，并尝试加载排行榜 (虽然可能会失败)
                         userId = 'guest-' + crypto.randomUUID().substring(0, 8);
                         updateUI();
-                        $leaderboardList.innerHTML = '<p class="text-center text-red-500">无法连接到排行榜服务。</p>';
+                        loadLeaderboard();
+                    } else {
+                        // 如果 db 未准备好
+                        $userIdDisplay.textContent = 'Auth Ready, DB Error';
+                        $leaderboardList.innerHTML = '<p class="text-center text-red-500">无法连接到数据库服务。</p>';
                     }
                 });
+
             } catch (error) {
                 console.error("Firebase 初始化或认证失败:", error);
                 $userIdDisplay.textContent = '错误!';
@@ -277,26 +315,43 @@
          * 从 Firestore 加载并实时监听全球排行榜。
          */
         function loadLeaderboard() {
-            // 查询：按 level 降序排列，取前 10 条
+            if (!db) {
+                console.error("loadLeaderboard: Firestore 数据库实例缺失.");
+                $leaderboardList.innerHTML = '<p class="text-center text-red-500">无法连接到排行榜服务。</p>';
+                return;
+            }
+
+            // FIX: 简化查询以避免复合索引错误。只按 level 降序排列。
+            // 必须移除 limit(10)，因为我们需要获取所有数据以便在客户端排序和筛选。
             const q = query(
                 collection(db, HIGH_SCORES_COLLECTION),
-                orderBy("level", "desc"),
-                orderBy("timestamp", "asc"), // 次级排序：分数相同时，先达成的靠前
-                limit(10)
+                orderBy("level", "desc") // 只保留一个 orderBy
+                // orderBy("timestamp", "asc"), // 移除，避免索引错误
+                // limit(10) // 移除，在客户端进行限制
             );
 
             // 实时监听
-            onSnapshot(q, (snapshot) => {
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const rawScores = [];
+                snapshot.forEach((doc) => {
+                    // 确保 level 是数字类型以便正确排序
+                    const data = doc.data();
+                    rawScores.push({ ...data, level: Number(data.level) });
+                });
+                
+                // FIX: 在客户端进行排序和限制
+                const sortedAndLimitedScores = sortAndLimitLeaderboard(rawScores);
+
                 let html = '';
-                if (snapshot.empty) {
+                if (sortedAndLimitedScores.length === 0) {
                     html = '<p class="text-center text-gray-500">暂无记录，快来创造第一个高分！</p>';
                 } else {
-                    snapshot.forEach((doc, index) => {
-                        const scoreData = doc.data();
+                    sortedAndLimitedScores.forEach((scoreData, index) => {
                         const rank = index + 1;
                         const isCurrentUser = scoreData.userId === userId;
                         const bgColor = isCurrentUser ? 'bg-indigo-100 font-bold' : 'bg-gray-50';
-                        const time = scoreData.timestamp ? new Date(scoreData.timestamp.toDate()).toLocaleDateString() : 'N/A';
+                        // 使用 toLocaleString 以更友好的格式显示日期
+                        const time = scoreData.timestamp ? new Date(scoreData.timestamp.toDate()).toLocaleString() : 'N/A';
                         
                         // 限制用户ID长度，防止UI溢出
                         const displayUserId = scoreData.userId.substring(0, 10) + '...';
@@ -319,7 +374,9 @@
                 $leaderboardList.innerHTML = html;
             }, (error) => {
                 console.error("加载排行榜失败:", error);
-                $leaderboardList.innerHTML = '<p class="text-center text-red-500">加载排行榜时发生错误。</p>';
+                // 这里是捕获安全规则错误的关键点
+                $leaderboardList.innerHTML = '<p class="text-center text-red-500">排行榜加载失败！请尝试刷新或检查控制台是否有权限错误。</p>';
+                unsubscribe(); // 停止监听以防止重复报错
             });
         }
         
